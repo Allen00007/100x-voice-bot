@@ -23,6 +23,9 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 app.post('/api/chat', async (req, res) => {
   console.log('[/api/chat] incoming request body:', JSON.stringify(req.body));
 
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
+
   try {
     const { message, profile } = req.body || {};
     if (!message) {
@@ -34,7 +37,7 @@ app.post('/api/chat', async (req, res) => {
     const persona = `PERSONA START\n${Object.entries(profile || {}).map(([k, v]) => `${k}: ${v}`).join('\n')}\nPERSONA END`;
     const fullMessage = `${persona}\nUser asked: ${message}`;
 
-    console.log('[/api/chat] sending prompt to OpenAI');
+    console.log('[/api/chat] sending prompt...');
 
     const payload = {
       model: 'gpt-4o-mini',
@@ -45,25 +48,45 @@ app.post('/api/chat', async (req, res) => {
       max_tokens: 400
     };
 
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify(payload)
-    });
+    let r;
 
-    console.log('[/api/chat] OpenAI status:', r.status);
+    if (openrouterKey) {
+      console.log('Using OpenRouter');
+      r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${openrouterKey}`
+        },
+        body: JSON.stringify(payload)
+      });
+    } else if (openaiKey) {
+      console.log('Using OpenAI');
+      r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${openaiKey}`
+        },
+        body: JSON.stringify(payload)
+      });
+    } else {
+      return res.status(500).json({ error: 'No API key configured' });
+    }
+
+    console.log('[/api/chat] status:', r.status);
 
     const data = await r.json();
-    console.log('[/api/chat] OpenAI response keys:', Object.keys(data));
+    console.log('[/api/chat] response keys:', Object.keys(data));
 
-    const reply = data.choices?.[0]?.message?.content || null;
+    const reply =
+      data?.choices?.[0]?.message?.content ||
+      data?.choices?.[0]?.text ||
+      null;
 
     if (!reply) {
-      console.log('[/api/chat] NO REPLY — FULL RESPONSE:', JSON.stringify(data));
-      return res.status(500).json({ error: 'no reply from OpenAI', raw: data });
+      console.log('NO REPLY — FULL RESPONSE:', JSON.stringify(data));
+      return res.status(500).json({ error: 'no reply from LLM', raw: data });
     }
 
     res.json({ reply });

@@ -1,6 +1,5 @@
 // api/index.js
 import express from 'express';
-import fetch from 'node-fetch';
 import bodyParser from 'body-parser';
 
 const app = express();

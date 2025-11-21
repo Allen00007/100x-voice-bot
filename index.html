@@ -1,0 +1,138 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>100x Voice Bot — Demo</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body{font-family:system-ui,Arial;margin:20px;background:#f7fafc;color:#111}
+    .container{max-width:900px;margin:0 auto;background:#fff;padding:18px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,0.06)}
+    .row{display:flex;gap:8px}
+    .input{width:100%;padding:10px;border-radius:8px;border:1px solid #e2e8f0}
+    button{padding:8px 12px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer}
+    .bubble{padding:10px;border-radius:10px;margin-top:8px}
+    .user{background:#e6f7ff}
+    .bot{background:#f0fdf4}
+    label.small{font-size:13px;color:#555}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>100x Voice Bot — Demo</h2>
+    <p class="small">This UI sends your questions to the backend endpoint <code>/api/chat</code>. Fill profile → ask question → get response.</p>
+
+    <details open>
+      <summary><strong>Edit my profile</strong></summary>
+      <div style="margin-top:10px">
+        <label class="small">Headline</label>
+        <input id="headline" class="input" />
+        <label class="small" style="display:block;margin-top:8px">Life story</label>
+        <textarea id="story" class="input" rows="3"></textarea>
+        <label class="small" style="display:block;margin-top:8px">Superpower</label>
+        <input id="superpower" class="input" />
+        <label class="small" style="display:block;margin-top:8px">Growth areas (comma)</label>
+        <input id="growth" class="input" />
+        <label class="small" style="display:block;margin-top:8px">Coworker misconception</label>
+        <input id="misconception" class="input" />
+        <div style="margin-top:8px">
+          <button id="saveProfile">Save profile</button>
+          <button id="clearProfile" style="margin-left:8px">Clear</button>
+        </div>
+      </div>
+    </details>
+
+    <div style="margin-top:12px">
+      <div class="row">
+        <input id="question" class="input" placeholder="Type your question" />
+        <button id="recordBtn">Record (hold)</button>
+        <button id="sendBtn">Send</button>
+      </div>
+    </div>
+
+    <div id="chat" style="margin-top:12px"></div>
+  </div>
+
+<script>
+  // Load + Save profile
+  const fields = ['headline','story','superpower','growth','misconception'];
+  function loadProfile(){
+    const p = JSON.parse(localStorage.getItem('voicebot_profile')||'{}');
+    fields.forEach(k => { const el = document.getElementById(k); if(el) el.value = p[k] || ''; });
+  }
+  function saveProfile(){
+    const p = {};
+    fields.forEach(k => p[k] = document.getElementById(k).value);
+    localStorage.setItem('voicebot_profile', JSON.stringify(p));
+    alert('Profile saved locally');
+  }
+  function clearProfile(){
+    localStorage.removeItem('voicebot_profile');
+    loadProfile();
+    alert('Profile cleared');
+  }
+
+  document.getElementById('saveProfile').onclick = saveProfile;
+  document.getElementById('clearProfile').onclick = clearProfile;
+  loadProfile();
+
+  // Add message
+  const chat = document.getElementById('chat');
+  function addMessage(role, text){
+    const div = document.createElement('div');
+    div.className = 'bubble ' + (role === 'user' ? 'user' : 'bot');
+    div.innerHTML = '<strong>' + (role === 'user' ? 'You' : 'Bot') + '</strong><div>' + text + '</div>';
+    chat.appendChild(div);
+  }
+
+  // Send question
+  async function sendQuestion(){
+    const q = document.getElementById('question').value;
+    if(!q) return;
+    addMessage('user', q);
+    const profile = JSON.parse(localStorage.getItem('voicebot_profile')||'{}');
+
+    try{
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({message:q, profile})
+      });
+      const data = await res.json();
+      addMessage('assistant', data.reply || 'No reply');
+      // Speak text
+      if('speechSynthesis' in window){
+        const u = new SpeechSynthesisUtterance(data.reply);
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      }
+    }catch(e){
+      addMessage('assistant', 'Network/server error: ' + e.message);
+    }
+    document.getElementById('question').value = '';
+  }
+
+  document.getElementById('sendBtn').onclick = sendQuestion;
+
+  // Voice record
+  let rec;
+  document.getElementById('recordBtn').addEventListener('mousedown', () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SR){ alert('Speech Recognition not supported. Use Chrome.'); return; }
+    rec = new SR();
+    rec.lang = 'en-US';
+    rec.onresult = e => {
+      document.getElementById('question').value = e.results[0][0].transcript;
+    };
+    rec.start();
+  });
+  document.getElementById('recordBtn').addEventListener('mouseup', () => {
+    try{ rec.stop(); }catch(e){}
+  });
+
+  document.getElementById('question').addEventListener('keydown', e => { 
+    if(e.key === 'Enter') sendQuestion();
+  });
+</script>
+
+</body>
+</html>

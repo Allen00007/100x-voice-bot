@@ -21,30 +21,57 @@ const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 app.post('/api/chat', async (req, res) => {
-  try{
-    const { message, profile } = req.body;
-    const systemPrompt = `You are a friendly, concise interview voice assistant that speaks AS the user whose profile is below.`;
-    const persona = `PERSONA START\n${Object.entries(profile || {}).map(([k,v])=>`${k}: ${v}`).join('\n')}\nPERSONA END`;
+  console.log('[/api/chat] incoming request body:', JSON.stringify(req.body));
+
+  try {
+    const { message, profile } = req.body || {};
+    if (!message) {
+      console.log('[/api/chat] no message provided');
+      return res.status(400).json({ error: 'no message provided' });
+    }
+
+    const systemPrompt = `You are a friendly, concise interview voice assistant that speaks AS the user whose profile is below. Use the profile to answer short interview questions in first person.`;
+    const persona = `PERSONA START\n${Object.entries(profile || {}).map(([k, v]) => `${k}: ${v}`).join('\n')}\nPERSONA END`;
     const fullMessage = `${persona}\nUser asked: ${message}`;
+
+    console.log('[/api/chat] sending prompt to OpenAI');
+
     const payload = {
       model: 'gpt-4o-mini',
       messages: [
-        { role:'system', content: systemPrompt },
-        { role:'user', content: fullMessage }
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: fullMessage }
       ],
       max_tokens: 400
     };
-    const r = await fetch('https://api.openai.com/v1/chat/completions',{
-      method:'POST',
-      headers:{'Content-Type':'application/json', Authorization:`Bearer ${OPENAI_API_KEY}`},
+
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      },
       body: JSON.stringify(payload)
     });
+
+    console.log('[/api/chat] OpenAI status:', r.status);
+
     const data = await r.json();
-    const reply = data.choices?.[0]?.message?.content || 'No response.';
+    console.log('[/api/chat] OpenAI response keys:', Object.keys(data));
+
+    const reply = data.choices?.[0]?.message?.content || null;
+
+    if (!reply) {
+      console.log('[/api/chat] NO REPLY — FULL RESPONSE:', JSON.stringify(data));
+      return res.status(500).json({ error: 'no reply from OpenAI', raw: data });
+    }
+
     res.json({ reply });
-  }catch(e){
-    res.status(500).json({error:e.message});
+  } catch (err) {
+    console.error('[/api/chat] ERROR:', err);
+    res.status(500).json({ error: err.message || String(err) });
   }
 });
+
 
 app.listen(PORT, ()=> console.log(`Server on ${PORT}`));
